@@ -1,8 +1,10 @@
+import csv
 import curses
 import sqlite3
 import os
 import re
 import sys
+from datetime import datetime
 from file_browser import FileBrowser
 
 
@@ -24,6 +26,7 @@ class SQLiteCursesApp:
         self.result_scroll = 0      # vertical scroll offset for results
         self.result_col_scroll = 0  # horizontal scroll offset for results
         self.results_visible_rows = 0  # updated each draw, used by input handler
+        self.export_status = ""        # shown in results header after export
         self.current_panel = "right"   # "left", "right", "results"
         self.command_mode = False
         self.in_quote = None    # '"' or "'" when cursor is inside a quoted string
@@ -107,9 +110,30 @@ class SQLiteCursesApp:
                 pass
             self.query_results = [f"Error: {str(e)}"]
             self.query_col_names = []
-        # Reset scroll whenever query runs
+        # Reset scroll and export status whenever query runs
         self.result_scroll = 0
         self.result_col_scroll = 0
+        self.export_status = ""
+
+    def export_to_csv(self):
+        if not self.query_results:
+            self.export_status = "no results"
+            return
+        if not isinstance(self.query_results[0], (tuple, list)):
+            self.export_status = "no tabular results to export"
+            return
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = os.path.join(os.path.dirname(self.db_path),
+                                f"results_{timestamp}.csv")
+        try:
+            with open(filename, 'w', newline='') as f:
+                writer = csv.writer(f)
+                if self.query_col_names:
+                    writer.writerow(self.query_col_names)
+                writer.writerows(self.query_results)
+            self.export_status = f"saved: {os.path.basename(filename)}"
+        except Exception as e:
+            self.export_status = f"error: {e}"
 
     def load_new_database(self, db_path):
         try:
@@ -269,9 +293,11 @@ class SQLiteCursesApp:
         results_label_attr = curses.A_REVERSE if results_focused else curses.A_BOLD
         total = len(self.query_results)
         count_text = f" ({total})" if total else ""
+        export_text = f"  [{self.export_status}]" if self.export_status else ""
         try:
             stdscr.addstr(sql_input_height + 2, col0,
-                          f"Results{count_text}:"[:right_width], results_label_attr)
+                          f"Results{count_text}{export_text}:"[:right_width],
+                          results_label_attr)
             stdscr.addstr(sql_input_height + 3, left_width,
                           "_" * min(right_width, width - left_width - 1))
         except curses.error:
@@ -336,17 +362,17 @@ class SQLiteCursesApp:
     def _draw_help(self, stdscr, height, width):
         if self.current_panel == "results":
             if self.command_mode:
-                help_text = "CMD: q=Quit f=Files  (@=ExitCMD) | 5/6/4/7 or ↑↓←→: Scroll"
+                help_text = "CMD: q=Quit f=Files e=Export  (@=ExitCMD) | 5/6/4/7 or ↑↓←→: Scroll"
             else:
                 help_text = "Tab/$: SwitchPanel | @: CommandMode | 5↑6↓: Scroll | 4←7→: H-Scroll"
         elif self.current_panel == "right":
             if self.command_mode:
-                help_text = "CMD: Enter=Run 5=Up 6=Down 4=Left 7=Right f=Files q=Quit  (@=ExitCMD)"
+                help_text = "CMD: Enter=Run c=Clear e=Export 5=Up 6=Down 4=Left 7=Right f=Files q=Quit  (@=ExitCMD)"
             else:
                 help_text = "Tab/$: SwitchPanel | @: CommandMode | Enter: NewLine | ←→↑↓: Move"
         else:  # left
             if self.command_mode:
-                help_text = "CMD: 5=Up 6=Down f=Files q=Quit  (@=ExitCMD)"
+                help_text = "CMD: 5=Up 6=Down f=Files e=Export q=Quit  (@=ExitCMD)"
             else:
                 help_text = "Tab/$: SwitchPanel | @: CommandMode | ↑↓/56: Navigate | Space: Expand/Collapse"
         try:
@@ -387,6 +413,9 @@ class SQLiteCursesApp:
             elif key == ord('f'):
                 self.command_mode = False
                 return "open_browser"
+            elif key == ord('e'):
+                self.export_to_csv()
+                self.command_mode = False
         # Navigation always active (results is read-only)
         total = len(self.query_results)
         max_v = max(0, total - self.results_visible_rows)
@@ -421,11 +450,19 @@ class SQLiteCursesApp:
             if key == ord('f'):
                 self.command_mode = False
                 return "open_browser"
+            elif key == ord('e'):
+                self.export_to_csv()
+                self.command_mode = False
             elif key == 10:  # Execute
                 self.execute_query()
                 self.command_mode = False
             elif key == ord('q'):
                 return "quit"
+            elif key == ord('c'):
+                self.sql_lines = [""]
+                self.current_line = 0
+                self.cursor_position = 0
+                self.command_mode = False
             elif key in (ord('5'), curses.KEY_UP):
                 if self.current_line > 0:
                     self.current_line -= 1
@@ -510,6 +547,9 @@ class SQLiteCursesApp:
             elif key == ord('f'):
                 self.command_mode = False
                 return "open_browser"
+            elif key == ord('e'):
+                self.export_to_csv()
+                self.command_mode = False
         # Tab / $ — cycle to SQL editor (works in both modes)
         if key in (9, ord('$')):
             self.current_panel = "right"
