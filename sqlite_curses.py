@@ -23,6 +23,7 @@ class SQLiteCursesApp:
         self.cursor_position = 0
         self.query_results = []
         self.query_col_names = []   # column headers from last SELECT
+        self.editor_scroll = 0      # vertical scroll offset for SQL editor
         self.result_scroll = 0      # vertical scroll offset for results
         self.result_col_scroll = 0  # horizontal scroll offset for results
         self.results_visible_rows = 0  # updated each draw, used by input handler
@@ -31,6 +32,7 @@ class SQLiteCursesApp:
         self.command_mode = False
         self.in_quote = None    # '"' or "'" when cursor is inside a quoted string
         self.left_scroll = 0      # vertical scroll offset for left panel
+        self.left_col_scroll = 0  # horizontal scroll offset for left panel
         self.left_cursor = 0     # cursor index into flat left-panel item list
         self.expanded_tables = set()  # tables with columns currently visible
 
@@ -225,15 +227,19 @@ class SQLiteCursesApp:
 
             try:
                 if kind == 'section':
-                    stdscr.addstr(screen_row, 0, label[:left_width], curses.A_BOLD)
+                    full = label
+                    text = full[self.left_col_scroll:self.left_col_scroll + left_width]
+                    stdscr.addstr(screen_row, 0, text, curses.A_BOLD)
                 elif kind in ('table', 'view', 'trigger'):
                     prefix = "- " if obj_name in self.expanded_tables else "+ "
-                    text = (prefix + label)[:left_width]
+                    full = prefix + label
+                    text = full[self.left_col_scroll:self.left_col_scroll + left_width]
                     stdscr.addstr(screen_row, 0, text,
                                   curses.A_REVERSE if is_cursor else 0)
                 else:  # col / triginfo
-                    text = ("  " + label)[:left_width - 2]
-                    stdscr.addstr(screen_row, 2, text,
+                    full = "  " + label
+                    text = full[self.left_col_scroll:self.left_col_scroll + left_width]
+                    stdscr.addstr(screen_row, 0, text,
                                   curses.A_REVERSE if is_cursor else 0)
             except curses.error:
                 pass
@@ -261,8 +267,29 @@ class SQLiteCursesApp:
 
         wrap_width = max(1, right_width - 2)  # 2 for "> " prefix
         editor_bot = sql_input_height + 2     # exclusive row boundary for editor
+        visible_editor_rows = editor_bot - 2  # number of display rows for SQL lines
+
+        # Clamp editor_scroll
+        self.editor_scroll = max(0, min(self.editor_scroll, len(self.sql_lines) - 1))
+
+        # Scroll up: ensure cursor line is not above the viewport
+        if self.current_line < self.editor_scroll:
+            self.editor_scroll = self.current_line
+
+        # Scroll down: count visual rows from editor_scroll to current_line;
+        # advance editor_scroll if cursor would fall off the bottom
+        rows_to_cursor = 0
+        for i in range(self.editor_scroll, self.current_line + 1):
+            line_i = self.sql_lines[i]
+            rows_to_cursor += max(1, -(-len(line_i) // wrap_width))
+        while rows_to_cursor > visible_editor_rows and self.editor_scroll < self.current_line:
+            line_i = self.sql_lines[self.editor_scroll]
+            rows_to_cursor -= max(1, -(-len(line_i) // wrap_width))
+            self.editor_scroll += 1
+
         start_row = 2
-        for i, line in enumerate(self.sql_lines):
+        for i in range(self.editor_scroll, len(self.sql_lines)):
+            line = self.sql_lines[i]
             if start_row >= editor_bot:
                 break
             is_current = (i == self.current_line and self.current_panel == "right")
@@ -374,7 +401,7 @@ class SQLiteCursesApp:
             if self.command_mode:
                 help_text = "CMD: 5=Up 6=Down f=Files e=Export q=Quit  (@=ExitCMD)"
             else:
-                help_text = "Tab/$: SwitchPanel | @: CommandMode | ↑↓/56: Navigate | Space: Expand/Collapse"
+                help_text = "Tab/$: SwitchPanel | @: CommandMode | 56: Navigate | 47: H-Scroll | Space: Expand"
         try:
             stdscr.addstr(height - 1, 0, help_text[:width - 1])
         except curses.error:
@@ -462,6 +489,7 @@ class SQLiteCursesApp:
                 self.sql_lines = [""]
                 self.current_line = 0
                 self.cursor_position = 0
+                self.editor_scroll = 0
                 self.command_mode = False
             elif key in (ord('5'), curses.KEY_UP):
                 if self.current_line > 0:
@@ -569,6 +597,12 @@ class SQLiteCursesApp:
             kind, obj_name, _ = items[self.left_cursor]
             if kind in ('table', 'view'):
                 self.selected_table = obj_name
+        # Left/right horizontal scroll (works in both modes)
+        elif key in (ord('4'), curses.KEY_LEFT):
+            if self.left_col_scroll > 0:
+                self.left_col_scroll -= 1
+        elif key in (ord('7'), curses.KEY_RIGHT):
+            self.left_col_scroll += 1
         # Space — toggle expand/collapse on any expandable item
         elif key == ord(' '):
             items = self._get_left_items()
@@ -630,6 +664,8 @@ class SQLiteCursesApp:
 
 
 if __name__ == "__main__":
-    db = sys.argv[1] if len(sys.argv) > 1 else "test.db"
-    app = SQLiteCursesApp(db)
+    if len(sys.argv) < 2:
+        print("Usage: python sqlite_curses.py <database.db>")
+        sys.exit(1)
+    app = SQLiteCursesApp(sys.argv[1])
     curses.wrapper(app.run)
