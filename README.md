@@ -2,6 +2,24 @@
 
 A terminal-based interactive SQLite editor built with Python curses. Designed to be fully usable from a phone keyboard — no Tab, Escape, Ctrl, or arrow keys required.
 
+
+
+*In a large phone:*
+
+<img width="430" height="431" alt="Screenshot_20260408-202811" src="https://github.com/user-attachments/assets/86241916-e399-4477-b667-d7bb323c3243" />
+
+
+*In a small phone:*
+
+<img width="428" height="196" alt="Screenshot_20260408-202543" src="https://github.com/user-attachments/assets/cabfafe6-c816-4b90-a595-997af064a744" />
+
+
+*The built-in file browser:*
+
+<img width="432" height="431" alt="Screenshot_20260408-202908" src="https://github.com/user-attachments/assets/bea36b28-cba0-43fa-8024-a723b8bda8f3" />
+
+
+
 ## Features
 
 - **Three-panel layout** — schema tree on the left, SQL editor top-right, results bottom-right
