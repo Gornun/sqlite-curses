@@ -41,10 +41,15 @@ A terminal-based interactive SQLite editor built with Python curses. Designed to
 ## Usage
 
 ```bash
+# Open an existing database
 python sqlite_curses.py <database.db>
+
+# Create a new database
+python sqlite_curses.py --create <database.db>
+python sqlite_curses.py -c <database.db>
 ```
 
-A database path is required. If the file does not exist, SQLite will create it.
+If the database file does not exist and `--create` is not specified, the program will exit with a friendly error rather than silently creating an empty file.
 
 ## Key Bindings
 

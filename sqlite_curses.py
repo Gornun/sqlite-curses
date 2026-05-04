@@ -1,8 +1,10 @@
+import base64
 import csv
 import curses
 import sqlite3
 import os
 import re
+import subprocess
 import sys
 from datetime import datetime
 from file_browser import FileBrowser
@@ -28,6 +30,10 @@ class SQLiteCursesApp:
         self.result_col_scroll = 0  # horizontal scroll offset for results
         self.results_visible_rows = 0  # updated each draw, used by input handler
         self.export_status = ""        # shown in results header after export
+        self.copy_status = ""          # shown in editor header after copy/save
+        self.sql_buffers = [{"lines": [""], "line": 0, "pos": 0, "scroll": 0}]
+        self.current_buffer = 0
+        self.tab_mode = False          # waiting for tab subcommand after @t
         self.current_panel = "right"   # "left", "right", "results"
         self.command_mode = False
         self.in_quote = None    # '"' or "'" when cursor is inside a quoted string
@@ -136,6 +142,94 @@ class SQLiteCursesApp:
             self.export_status = f"saved: {os.path.basename(filename)}"
         except Exception as e:
             self.export_status = f"error: {e}"
+
+    def copy_sql(self):
+        text = '\n'.join(self.sql_lines).strip()
+        if not text:
+            self.copy_status = "editor is empty"
+            return
+
+        # Try OSC 52 — terminal-native clipboard, works in most web terminals
+        try:
+            encoded = base64.b64encode(text.encode()).decode()
+            osc52 = f"\033]52;c;{encoded}\007"
+            fd = os.open('/dev/tty', os.O_WRONLY)
+            os.write(fd, osc52.encode())
+            os.close(fd)
+            self.copy_status = "copied to clipboard"
+            return
+        except Exception:
+            pass
+
+        # Try xclip / xsel (Linux X11)
+        for cmd in (['xclip', '-selection', 'clipboard'],
+                    ['xsel', '--clipboard', '--input']):
+            try:
+                proc = subprocess.run(cmd, input=text.encode(), timeout=2)
+                if proc.returncode == 0:
+                    self.copy_status = f"copied ({cmd[0]})"
+                    return
+            except (FileNotFoundError, subprocess.TimeoutExpired):
+                continue
+
+        # Fallback: save to a .sql file
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = os.path.join(os.path.dirname(self.db_path),
+                                f"query_{timestamp}.sql")
+        try:
+            with open(filename, 'w') as f:
+                f.write(text)
+            self.copy_status = f"saved: {os.path.basename(filename)}"
+        except Exception as e:
+            self.copy_status = f"error: {e}"
+
+    def _save_buffer(self):
+        self.sql_buffers[self.current_buffer] = {
+            "lines": list(self.sql_lines),
+            "line": self.current_line,
+            "pos": self.cursor_position,
+            "scroll": self.editor_scroll,
+        }
+
+    def _restore_buffer(self, n):
+        """Load buffer n into live state (does NOT save current first)."""
+        self.current_buffer = n
+        b = self.sql_buffers[n]
+        self.sql_lines = list(b["lines"])
+        self.current_line = b["line"]
+        self.cursor_position = b["pos"]
+        self.editor_scroll = b["scroll"]
+        self.copy_status = ""
+
+    def _switch_buffer(self, n):
+        self._save_buffer()
+        self._restore_buffer(n)
+
+    def _handle_tab_mode(self, key):
+        self.tab_mode = False
+        if key == ord('n'):
+            if len(self.sql_buffers) < 4:
+                self._save_buffer()
+                self.sql_buffers.append({"lines": [""], "line": 0, "pos": 0, "scroll": 0})
+                self._restore_buffer(len(self.sql_buffers) - 1)
+            else:
+                self.copy_status = "max 4 buffers"
+        elif key == ord('d'):
+            if len(self.sql_buffers) > 1:
+                self.sql_buffers.pop(self.current_buffer)
+                self._restore_buffer(min(self.current_buffer, len(self.sql_buffers) - 1))
+            else:
+                # Only one buffer — just clear it
+                self.sql_lines = [""]
+                self.current_line = 0
+                self.cursor_position = 0
+                self.editor_scroll = 0
+                self.copy_status = ""
+        elif ord('1') <= key <= ord('4'):
+            n = key - ord('1')
+            if n < len(self.sql_buffers):
+                self._switch_buffer(n)
+        # any other key: cancel (tab_mode already cleared)
 
     def load_new_database(self, db_path):
         try:
@@ -259,8 +353,11 @@ class SQLiteCursesApp:
             mode_text = f" [IN {self.in_quote}]"
         else:
             mode_text = ""
+        copy_text = f"  [{self.copy_status}]" if self.copy_status else ""
+        n_buf = len(self.sql_buffers)
+        buf_text = f" [{self.current_buffer + 1}/{n_buf}]" if n_buf > 1 else ""
         try:
-            stdscr.addstr(0, col0, f"SQL Editor{mode_text}"[:right_width], curses.A_BOLD)
+            stdscr.addstr(0, col0, f"SQL Editor{mode_text}{buf_text}{copy_text}"[:right_width], curses.A_BOLD)
             stdscr.addstr(1, left_width, "_" * min(right_width, width - left_width - 1))
         except curses.error:
             pass
@@ -387,19 +484,21 @@ class SQLiteCursesApp:
                     pass
 
     def _draw_help(self, stdscr, height, width):
-        if self.current_panel == "results":
+        if self.tab_mode:
+            help_text = "TAB: n=New  d=Del  1-4=Switch  (other key=cancel)"
+        elif self.current_panel == "results":
             if self.command_mode:
-                help_text = "CMD: q=Quit f=Files e=Export  (@=ExitCMD) | 5/6/4/7 or ↑↓←→: Scroll"
+                help_text = "CMD: q=Quit f=Files e=Export y=Copy t=Tabs  (@=ExitCMD) | 5/6/4/7: Scroll"
             else:
                 help_text = "Tab/$: SwitchPanel | @: CommandMode | 5↑6↓: Scroll | 4←7→: H-Scroll"
         elif self.current_panel == "right":
             if self.command_mode:
-                help_text = "CMD: Enter=Run c=Clear e=Export 5=Up 6=Down 4=Left 7=Right f=Files q=Quit  (@=ExitCMD)"
+                help_text = "CMD: Enter=Run c=Clr e=Exp y=Copy t=Tabs f=Files 56=↕ 47=↔ q=Quit (@=Exit)"
             else:
                 help_text = "Tab/$: SwitchPanel | @: CommandMode | Enter: NewLine | ←→↑↓: Move"
         else:  # left
             if self.command_mode:
-                help_text = "CMD: 5=Up 6=Down f=Files e=Export q=Quit  (@=ExitCMD)"
+                help_text = "CMD: 56=Nav f=Files e=Export y=Copy t=Tabs q=Quit  (@=ExitCMD)"
             else:
                 help_text = "Tab/$: SwitchPanel | @: CommandMode | 56: Navigate | 47: H-Scroll | Space: Expand"
         try:
@@ -443,6 +542,12 @@ class SQLiteCursesApp:
             elif key == ord('e'):
                 self.export_to_csv()
                 self.command_mode = False
+            elif key == ord('y'):
+                self.copy_sql()
+                self.command_mode = False
+            elif key == ord('t'):
+                self.tab_mode = True
+                self.command_mode = False
         # Navigation always active (results is read-only)
         total = len(self.query_results)
         max_v = max(0, total - self.results_visible_rows)
@@ -479,6 +584,12 @@ class SQLiteCursesApp:
                 return "open_browser"
             elif key == ord('e'):
                 self.export_to_csv()
+                self.command_mode = False
+            elif key == ord('y'):
+                self.copy_sql()
+                self.command_mode = False
+            elif key == ord('t'):
+                self.tab_mode = True
                 self.command_mode = False
             elif key == 10:  # Execute
                 self.execute_query()
@@ -564,6 +675,7 @@ class SQLiteCursesApp:
                                                      + chr(key)
                                                      + line[self.cursor_position:])
                 self.cursor_position += 1
+                self.copy_status = ""
 
     def _handle_left_panel_input(self, key):
         if key == ord('@'):
@@ -577,6 +689,12 @@ class SQLiteCursesApp:
                 return "open_browser"
             elif key == ord('e'):
                 self.export_to_csv()
+                self.command_mode = False
+            elif key == ord('y'):
+                self.copy_sql()
+                self.command_mode = False
+            elif key == ord('t'):
+                self.tab_mode = True
                 self.command_mode = False
         # Tab / $ — cycle to SQL editor (works in both modes)
         if key in (9, ord('$')):
@@ -646,7 +764,9 @@ class SQLiteCursesApp:
             key = stdscr.getch()
             result = None
 
-            if self.current_panel == "results":
+            if self.tab_mode:
+                self._handle_tab_mode(key)
+            elif self.current_panel == "results":
                 result = self._handle_results_panel_input(key)
             elif self.current_panel == "right":
                 result = self._handle_right_panel_input(key)
@@ -664,8 +784,23 @@ class SQLiteCursesApp:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: python sqlite_curses.py <database.db>")
+    args = sys.argv[1:]
+    create_new = False
+
+    if args and args[0] in ('-c', '--create'):
+        create_new = True
+        args = args[1:]
+
+    if not args:
+        print("Usage: python sqlite_curses.py [-c|--create] <database.db>")
+        print("  -c, --create   Create a new database (required if file does not exist)")
         sys.exit(1)
-    app = SQLiteCursesApp(sys.argv[1])
+
+    db_path = args[0]
+    if not create_new and not os.path.exists(db_path):
+        print(f"Error: '{db_path}' not found.")
+        print(f"To create it, run: python sqlite_curses.py --create {db_path}")
+        sys.exit(1)
+
+    app = SQLiteCursesApp(db_path)
     curses.wrapper(app.run)
