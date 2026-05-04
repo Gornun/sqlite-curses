@@ -24,8 +24,10 @@ A terminal-based interactive SQLite editor built with Python curses. Designed to
 
 - **Three-panel layout** — schema tree on the left, SQL editor top-right, results bottom-right
 - **Multi-line SQL editor** — wraps long lines, scrolls vertically, cursor tracked through wrapped text
-- **Schema tree** — shows tables, views, and triggers; expand/collapse to see columns with type, PK, and index indicators
+- **Schema tree** — shows tables, views, and triggers; expand/collapse to see columns with type, PK, and index indicators; horizontal scrolling for long names
 - **Results panel** — vertical and horizontal scrolling, visual scrollbar
+- **SQL buffers** — up to 4 independent editor buffers; switch between them while keeping results visible
+- **Copy SQL** — copy editor contents to clipboard via OSC 52 (works in most web/SSH terminals), with fallback to `xclip`/`xsel`, or saves to a `.sql` file
 - **CSV export** — export current results to a timestamped `.csv` file
 - **File browser** — navigate directories to open a different database or create a new one
 - **Phone-friendly** — all navigation available via number keys (`5`/`6`/`4`/`7` = up/down/left/right); `@` as command modifier; `$` as Tab substitute
@@ -66,6 +68,8 @@ A database path is required. If the file does not exist, SQLite will create it.
 | `Enter` | Execute SQL |
 | `c` | Clear editor |
 | `e` | Export results to CSV |
+| `y` | Copy SQL to clipboard (or save to `.sql` file) |
+| `t` | Enter buffer/tab mode |
 | `f` | Open file browser |
 | `5` `6` `4` `7` | Move cursor (up/down/left/right) |
 | `q` | Quit |
@@ -86,6 +90,8 @@ A database path is required. If the file does not exist, SQLite will create it.
 | Key | Action |
 |-----|--------|
 | `e` | Export results to CSV |
+| `y` | Copy SQL to clipboard (or save to `.sql` file) |
+| `t` | Enter buffer/tab mode |
 | `f` | Open file browser |
 | `q` | Quit |
 | `@` | Exit command mode |
@@ -104,6 +110,8 @@ A database path is required. If the file does not exist, SQLite will create it.
 | Key | Action |
 |-----|--------|
 | `e` | Export results to CSV |
+| `y` | Copy SQL to clipboard (or save to `.sql` file) |
+| `t` | Enter buffer/tab mode |
 | `f` | Open file browser |
 | `q` | Quit |
 | `@` | Exit command mode |
@@ -132,6 +140,29 @@ When the cursor is inside a single-quoted (`'`) or double-quoted (`"`) string in
 ## CSV Export
 
 `@e` (available from any panel's command mode) writes the current results to a file named `results_YYYYMMDD_HHMMSS.csv` in the same directory as the open database. The filename is confirmed in the Results panel header.
+
+## Copy SQL
+
+`@y` copies the current editor contents to the clipboard using the following fallback chain:
+
+1. **OSC 52** — a terminal escape sequence supported by most modern terminal emulators and web terminals, including over SSH. No extra tools needed.
+2. **`xclip` / `xsel`** — standard Linux clipboard tools, used if OSC 52 is not supported.
+3. **`.sql` file** — if neither clipboard method works, the SQL is saved as `query_YYYYMMDD_HHMMSS.sql` next to the database. Something always comes out.
+
+The result is confirmed in the editor header and clears on the next keystroke.
+
+## SQL Buffers
+
+`@t` (available from any panel's command mode) enters buffer mode. The help bar shows available commands:
+
+| Key | Action |
+|-----|--------|
+| `n` | New buffer (up to 4) |
+| `d` | Delete current buffer (clears if only one remains) |
+| `1`–`4` | Switch to that buffer |
+| any other key | Cancel |
+
+Each buffer has its own SQL text, cursor position, and scroll state. Results are shared — switching buffers does not change what's displayed in the results panel. The editor header shows `[2/3]` (current/total) when more than one buffer is open.
 
 ## File Structure
 
