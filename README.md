@@ -30,6 +30,7 @@ A terminal-based interactive SQLite editor built with Python curses. Designed to
 - **Copy SQL** — copy editor contents to clipboard via OSC 52 (works in most web/SSH terminals), with fallback to `xclip`/`xsel`, or saves to a `.sql` file
 - **CSV export** — export current results to a timestamped `.csv` file
 - **File browser** — navigate directories to open a different database or create a new one
+- **Resizable panels** — Shift+arrow keys move the vertical and horizontal dividers to reclaim screen space
 - **Phone-friendly** — all navigation available via number keys (`5`/`6`/`4`/`7` = up/down/left/right); `@` as command modifier; `$` as Tab substitute
 
 ## Requirements
@@ -57,6 +58,14 @@ If the database file does not exist and `--create` is not specified, the program
 | Key | Action |
 |-----|--------|
 | `Tab` or `$` | Cycle to next panel (Left → Editor → Results → Left) |
+
+### Resizing Panels (PC only)
+| Key | Action |
+|-----|--------|
+| `Shift+←` `Shift+→` | Move the vertical divider left / right |
+| `Shift+↑` `Shift+↓` | Move the horizontal divider up / down |
+
+Dividers adjust relative to the default proportions, so the layout continues to scale correctly if you resize the window.
 
 ### SQL Editor (right panel, top)
 | Key | Action |

@@ -34,6 +34,8 @@ class SQLiteCursesApp:
         self.sql_buffers = [{"lines": [""], "line": 0, "pos": 0, "scroll": 0}]
         self.current_buffer = 0
         self.tab_mode = False          # waiting for tab subcommand after @t
+        self.divider_x = 0             # left panel width offset from default (width//3)
+        self.divider_y = 0             # editor height offset from default (height//2-2)
         self.current_panel = "right"   # "left", "right", "results"
         self.command_mode = False
         self.in_quote = None    # '"' or "'" when cursor is inside a quoted string
@@ -340,7 +342,7 @@ class SQLiteCursesApp:
 
     def _draw_right_panel(self, stdscr, height, width, left_width):
         right_width = width - left_width - 1
-        sql_input_height = height // 2 - 2
+        sql_input_height = max(3, min(height - 8, height // 2 - 2 + self.divider_y))
         col0 = left_width + 1
         # Reserve 1 col on the far right for the scrollbar
         text_width = right_width - 2
@@ -753,7 +755,7 @@ class SQLiteCursesApp:
         while True:
             stdscr.clear()
             height, width = stdscr.getmaxyx()
-            left_width = width // 3
+            left_width = max(8, min(width - 8, width // 3 + self.divider_x))
 
             stdscr.vline(0, left_width, curses.ACS_VLINE, height)
             self._draw_left_panel(stdscr, height, left_width)
@@ -764,7 +766,15 @@ class SQLiteCursesApp:
             key = stdscr.getch()
             result = None
 
-            if self.tab_mode:
+            if key == curses.KEY_SRIGHT:
+                self.divider_x += 1
+            elif key == curses.KEY_SLEFT:
+                self.divider_x -= 1
+            elif key == curses.KEY_SF:    # Shift+Down
+                self.divider_y += 1
+            elif key == curses.KEY_SR:    # Shift+Up
+                self.divider_y -= 1
+            elif self.tab_mode:
                 self._handle_tab_mode(key)
             elif self.current_panel == "results":
                 result = self._handle_results_panel_input(key)
