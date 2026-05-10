@@ -92,28 +92,81 @@ class SQLiteCursesApp:
         return [(row[1], row[2], bool(row[5]), row[1] in indexed)
                 for row in cols]  # (name, type, is_pk, is_indexed)
 
-    def execute_query(self):
-        try:
-            sql_query = '\n'.join(self.sql_lines).strip()
-            if not sql_query:
-                return
-            self.cursor.execute(sql_query)
-            first_word = sql_query.upper().split()[0]
-            write_ops = ('INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP',
-                         'ALTER', 'ATTACH', 'DETACH', 'REPLACE')
-            if first_word in write_ops:
-                self.conn.commit()
-                self.query_results = [f"OK ({self.cursor.rowcount} row(s) affected)"]
-                self.query_col_names = []
-                if first_word in ('CREATE', 'DROP', 'ALTER'):
-                    self.load_objects()
-                    if self.tables and self.selected_table not in self.tables:
-                        self.selected_table = self.tables[0]
+    def _split_statements(self, sql):
+        """Split SQL on semicolons, ignoring those inside quoted strings."""
+        statements = []
+        current = []
+        in_q = None
+        for ch in sql:
+            if in_q:
+                current.append(ch)
+                if ch == in_q:
+                    in_q = None
+            elif ch in ('"', "'"):
+                in_q = ch
+                current.append(ch)
+            elif ch == ';':
+                stmt = ''.join(current).strip()
+                if stmt:
+                    statements.append(stmt)
+                current = []
             else:
-                self.query_col_names = ([desc[0] for desc in self.cursor.description]
-                                        if self.cursor.description else [])
-                rows = self.cursor.fetchall()
-                self.query_results = rows if rows else ["(no results)"]
+                current.append(ch)
+        stmt = ''.join(current).strip()
+        if stmt:
+            statements.append(stmt)
+        return statements
+
+    def execute_query(self):
+        write_ops = ('INSERT', 'UPDATE', 'DELETE', 'CREATE', 'DROP',
+                     'ALTER', 'ATTACH', 'DETACH', 'REPLACE')
+        try:
+            sql_text = '\n'.join(self.sql_lines).strip()
+            if not sql_text:
+                return
+
+            statements = self._split_statements(sql_text)
+            if not statements:
+                return
+
+            last_results = None
+            last_col_names = []
+            total_rowcount = 0
+            write_count = 0
+            needs_reload = False
+
+            for stmt in statements:
+                self.cursor.execute(stmt)
+                first_word = stmt.upper().split()[0]
+                if first_word in write_ops:
+                    total_rowcount += max(0, self.cursor.rowcount)
+                    write_count += 1
+                    if first_word in ('CREATE', 'DROP', 'ALTER'):
+                        needs_reload = True
+                    last_results = None
+                    last_col_names = []
+                else:
+                    last_col_names = ([desc[0] for desc in self.cursor.description]
+                                      if self.cursor.description else [])
+                    rows = self.cursor.fetchall()
+                    last_results = rows if rows else ["(no results)"]
+
+            if write_count > 0:
+                self.conn.commit()
+            if needs_reload:
+                self.load_objects()
+                if self.tables and self.selected_table not in self.tables:
+                    self.selected_table = self.tables[0]
+
+            if last_results is not None:
+                self.query_results = last_results
+                self.query_col_names = last_col_names
+            else:
+                n = len(statements)
+                stmt_text = f"{n} statements" if n > 1 else "1 statement"
+                self.query_results = [f"OK ({stmt_text}, {total_rowcount} row(s) affected)"]
+                self.query_col_names = []
+
         except Exception as e:
             try:
                 self.conn.rollback()

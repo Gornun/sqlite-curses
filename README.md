@@ -23,7 +23,7 @@ A terminal-based interactive SQLite editor built with Python curses. Designed to
 ## Features
 
 - **Three-panel layout** — schema tree on the left, SQL editor top-right, results bottom-right
-- **Multi-line SQL editor** — wraps long lines, scrolls vertically, cursor tracked through wrapped text
+- **Multi-line SQL editor** — wraps long lines, scrolls vertically, cursor tracked through wrapped text; supports multiple statements separated by `;`
 - **Schema tree** — shows tables, views, and triggers; expand/collapse to see columns with type, PK, and index indicators; horizontal scrolling for long names
 - **Results panel** — vertical and horizontal scrolling, visual scrollbar
 - **SQL buffers** — up to 4 independent editor buffers; switch between them while keeping results visible
@@ -150,6 +150,20 @@ Dividers adjust relative to the default proportions, so the layout continues to 
 ## Quote-Aware Command Detection
 
 When the cursor is inside a single-quoted (`'`) or double-quoted (`"`) string in the editor, `@` and `$` are passed through as literal characters rather than triggering command mode or panel switching. The status bar shows `[IN ']` or `[IN "]` when this is active.
+
+## Multiple Statements
+
+The editor supports multiple SQL statements in a single buffer, separated by `;`:
+
+```sql
+INSERT INTO users (name) VALUES ('alice');
+INSERT INTO users (name) VALUES ('bob');
+SELECT * FROM users;
+```
+
+All statements execute as a single atomic batch — if any one fails, the entire batch rolls back. Results displayed are from the last statement that returned rows. If all statements were write operations, a summary is shown: `OK (3 statements, 2 row(s) affected)`.
+
+Semicolons inside quoted strings are handled correctly and not treated as statement separators.
 
 ## Export Menu
 
