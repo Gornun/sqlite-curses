@@ -34,6 +34,7 @@ class SQLiteCursesApp:
         self.sql_buffers = [{"lines": [""], "line": 0, "pos": 0, "scroll": 0}]
         self.current_buffer = 0
         self.tab_mode = False          # waiting for tab subcommand after @t
+        self.export_mode = False       # waiting for export subcommand after @e
         self.divider_x = 0             # left panel width offset from default (width//3)
         self.divider_y = 0             # editor height offset from default (height//2-2)
         self.current_panel = "right"   # "left", "right", "results"
@@ -144,6 +145,29 @@ class SQLiteCursesApp:
             self.export_status = f"saved: {os.path.basename(filename)}"
         except Exception as e:
             self.export_status = f"error: {e}"
+
+    def save_sql_to_file(self):
+        text = '\n'.join(self.sql_lines).strip()
+        if not text:
+            self.export_status = "editor is empty"
+            return
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = os.path.join(os.path.dirname(self.db_path),
+                                f"query_{timestamp}.sql")
+        try:
+            with open(filename, 'w') as f:
+                f.write(text)
+            self.export_status = f"saved: {os.path.basename(filename)}"
+        except Exception as e:
+            self.export_status = f"error: {e}"
+
+    def _handle_export_mode(self, key):
+        self.export_mode = False
+        if key == ord('r'):
+            self.export_to_csv()
+        elif key == ord('s'):
+            self.save_sql_to_file()
+        # any other key: cancel
 
     def copy_sql(self):
         text = '\n'.join(self.sql_lines).strip()
@@ -486,7 +510,9 @@ class SQLiteCursesApp:
                     pass
 
     def _draw_help(self, stdscr, height, width):
-        if self.tab_mode:
+        if self.export_mode:
+            help_text = "EXPORT: r=Results(CSV)  s=SQL(.sql file)  (other key=cancel)"
+        elif self.tab_mode:
             help_text = "TAB: n=New  d=Del  1-4=Switch  (other key=cancel)"
         elif self.current_panel == "results":
             if self.command_mode:
@@ -542,7 +568,7 @@ class SQLiteCursesApp:
                 self.command_mode = False
                 return "open_browser"
             elif key == ord('e'):
-                self.export_to_csv()
+                self.export_mode = True
                 self.command_mode = False
             elif key == ord('y'):
                 self.copy_sql()
@@ -585,7 +611,7 @@ class SQLiteCursesApp:
                 self.command_mode = False
                 return "open_browser"
             elif key == ord('e'):
-                self.export_to_csv()
+                self.export_mode = True
                 self.command_mode = False
             elif key == ord('y'):
                 self.copy_sql()
@@ -690,7 +716,7 @@ class SQLiteCursesApp:
                 self.command_mode = False
                 return "open_browser"
             elif key == ord('e'):
-                self.export_to_csv()
+                self.export_mode = True
                 self.command_mode = False
             elif key == ord('y'):
                 self.copy_sql()
@@ -774,6 +800,8 @@ class SQLiteCursesApp:
                 self.divider_y += 1
             elif key == curses.KEY_SR:    # Shift+Up
                 self.divider_y -= 1
+            elif self.export_mode:
+                self._handle_export_mode(key)
             elif self.tab_mode:
                 self._handle_tab_mode(key)
             elif self.current_panel == "results":

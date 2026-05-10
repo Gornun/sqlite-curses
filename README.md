@@ -28,7 +28,7 @@ A terminal-based interactive SQLite editor built with Python curses. Designed to
 - **Results panel** — vertical and horizontal scrolling, visual scrollbar
 - **SQL buffers** — up to 4 independent editor buffers; switch between them while keeping results visible
 - **Copy SQL** — copy editor contents to clipboard via OSC 52 (works in most web/SSH terminals), with fallback to `xclip`/`xsel`, or saves to a `.sql` file
-- **CSV export** — export current results to a timestamped `.csv` file
+- **Export menu** — `@e` opens a submenu to export results to CSV or save the current SQL to a `.sql` file
 - **File browser** — navigate directories to open a different database or create a new one
 - **Resizable panels** — Shift+arrow keys move the vertical and horizontal dividers to reclaim screen space
 - **Phone-friendly** — all navigation available via number keys (`5`/`6`/`4`/`7` = up/down/left/right); `@` as command modifier; `$` as Tab substitute
@@ -81,8 +81,8 @@ Dividers adjust relative to the default proportions, so the layout continues to 
 |-----|--------|
 | `Enter` | Execute SQL |
 | `c` | Clear editor |
-| `e` | Export results to CSV |
-| `y` | Copy SQL to clipboard (or save to `.sql` file) |
+| `e` | Export menu (see below) |
+| `y` | Copy SQL to clipboard |
 | `t` | Enter buffer/tab mode |
 | `f` | Open file browser |
 | `5` `6` `4` `7` | Move cursor (up/down/left/right) |
@@ -103,8 +103,8 @@ Dividers adjust relative to the default proportions, so the layout continues to 
 **Left panel command mode** (`@` then):
 | Key | Action |
 |-----|--------|
-| `e` | Export results to CSV |
-| `y` | Copy SQL to clipboard (or save to `.sql` file) |
+| `e` | Export menu (see below) |
+| `y` | Copy SQL to clipboard |
 | `t` | Enter buffer/tab mode |
 | `f` | Open file browser |
 | `q` | Quit |
@@ -123,8 +123,8 @@ Dividers adjust relative to the default proportions, so the layout continues to 
 **Results command mode** (`@` then):
 | Key | Action |
 |-----|--------|
-| `e` | Export results to CSV |
-| `y` | Copy SQL to clipboard (or save to `.sql` file) |
+| `e` | Export menu (see below) |
+| `y` | Copy SQL to clipboard |
 | `t` | Enter buffer/tab mode |
 | `f` | Open file browser |
 | `q` | Quit |
@@ -151,19 +151,27 @@ Dividers adjust relative to the default proportions, so the layout continues to 
 
 When the cursor is inside a single-quoted (`'`) or double-quoted (`"`) string in the editor, `@` and `$` are passed through as literal characters rather than triggering command mode or panel switching. The status bar shows `[IN ']` or `[IN "]` when this is active.
 
-## CSV Export
+## Export Menu
 
-`@e` (available from any panel's command mode) writes the current results to a file named `results_YYYYMMDD_HHMMSS.csv` in the same directory as the open database. The filename is confirmed in the Results panel header.
+`@e` (available from any panel's command mode) opens a one-key submenu:
+
+| Key | Action |
+|-----|--------|
+| `r` | Export results to `results_YYYYMMDD_HHMMSS.csv` |
+| `s` | Save current SQL to `query_YYYYMMDD_HHMMSS.sql` |
+| any other key | Cancel |
+
+Both files are saved in the same directory as the open database. The filename is confirmed in the Results panel header.
 
 ## Copy SQL
 
-`@y` copies the current editor contents to the clipboard using the following fallback chain:
+`@y` attempts to copy the current editor contents to the system clipboard using the following fallback chain:
 
 1. **OSC 52** — a terminal escape sequence supported by most modern terminal emulators and web terminals, including over SSH. No extra tools needed.
 2. **`xclip` / `xsel`** — standard Linux clipboard tools, used if OSC 52 is not supported.
-3. **`.sql` file** — if neither clipboard method works, the SQL is saved as `query_YYYYMMDD_HHMMSS.sql` next to the database. Something always comes out.
+3. **`.sql` file** — if neither clipboard method works, the SQL is saved as `query_YYYYMMDD_HHMMSS.sql` next to the database.
 
-The result is confirmed in the editor header and clears on the next keystroke.
+The result is confirmed in the editor header and clears on the next keystroke. If clipboard access is unavailable in your environment, use `@e s` instead to save the SQL directly to a file.
 
 ## SQL Buffers
 
