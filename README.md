@@ -25,7 +25,7 @@ A terminal-based interactive SQLite editor built with Python curses. Designed to
 - **Three-panel layout** — schema tree on the left, SQL editor top-right, results bottom-right
 - **Multi-line SQL editor** — wraps long lines, scrolls vertically, cursor tracked through wrapped text; supports multiple statements separated by `;`
 - **Schema tree** — shows tables, views, and triggers; expand/collapse to see columns with type, PK, and index indicators; horizontal scrolling for long names
-- **Results panel** — vertical and horizontal scrolling, visual scrollbar
+- **Results panel** — vertical and horizontal scrolling, visual scrollbar; cell values with newlines or tabs are shown on a single line so they never corrupt the layout
 - **SQL buffers** — up to 4 independent editor buffers; switch between them while keeping results visible
 - **Copy SQL** — copy editor contents to clipboard via OSC 52 (works in most web/SSH terminals), with fallback to `xclip`/`xsel`, or saves to a `.sql` file
 - **Export menu** — `@e` opens a submenu to export results to CSV or save the current SQL to a `.sql` file
@@ -164,6 +164,10 @@ SELECT * FROM users;
 All statements execute as a single atomic batch — if any one fails, the entire batch rolls back. Results displayed are from the last statement that returned rows. If all statements were write operations, a summary is shown: `OK (3 statements, 2 row(s) affected)`.
 
 Semicolons inside quoted strings are handled correctly and not treated as statement separators.
+
+## Multi-line Cell Values
+
+When a column contains newlines, tabs, or other control characters, the results panel replaces them with spaces so each row stays on one line. The full, unmodified value is still written when you export results to CSV.
 
 ## Export Menu
 

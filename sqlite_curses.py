@@ -10,6 +10,16 @@ from datetime import datetime
 from file_browser import FileBrowser
 
 
+def _cell_str(value):
+    """Flatten a cell value to a single printable line for display.
+
+    Newlines, tabs and other control characters in a column would make
+    curses wrap or jump the cursor, corrupting the results panel, so
+    replace anything non-printable with a space.
+    """
+    return "".join(ch if ch.isprintable() else " " for ch in str(value))
+
+
 class SQLiteCursesApp:
     def __init__(self, db_path):
         self.db_path = os.path.abspath(db_path)
@@ -509,7 +519,7 @@ class SQLiteCursesApp:
         # Column headers row (pinned)
         data_start_row = sql_input_height + 4
         if self.query_col_names:
-            header_str = " | ".join(str(c) for c in self.query_col_names)
+            header_str = " | ".join(_cell_str(c) for c in self.query_col_names)
             header_display = header_str[self.result_col_scroll:
                                         self.result_col_scroll + text_width]
             try:
@@ -529,9 +539,9 @@ class SQLiteCursesApp:
                 break
             row_data = self.query_results[idx]
             if isinstance(row_data, (tuple, list)):
-                row_str = " | ".join(str(v) for v in row_data)
+                row_str = " | ".join(_cell_str(v) for v in row_data)
             else:
-                row_str = str(row_data)
+                row_str = _cell_str(row_data)
             row_display = row_str[self.result_col_scroll:
                                   self.result_col_scroll + text_width]
             screen_row = data_start_row + i
