@@ -41,6 +41,7 @@ class SQLiteCursesApp:
         self.results_visible_rows = 0  # updated each draw, used by input handler
         self.export_status = ""        # shown in results header after export
         self.copy_status = ""          # shown in editor header after copy/save
+        self.clipboard = ""            # in-app clipboard, set by @y, pasted by @p
         self.sql_buffers = [{"lines": [""], "line": 0, "pos": 0, "scroll": 0}]
         self.current_buffer = 0
         self.tab_mode = False          # waiting for tab subcommand after @t
@@ -238,6 +239,10 @@ class SQLiteCursesApp:
             self.copy_status = "editor is empty"
             return
 
+        # Always keep an in-app copy so @p works even when no external
+        # clipboard is reachable (e.g. running under docker exec).
+        self.clipboard = text
+
         # Try OSC 52 — terminal-native clipboard, works in most web terminals
         try:
             encoded = base64.b64encode(text.encode()).decode()
@@ -271,6 +276,28 @@ class SQLiteCursesApp:
             self.copy_status = f"saved: {os.path.basename(filename)}"
         except Exception as e:
             self.copy_status = f"error: {e}"
+
+    def paste_sql(self):
+        """Insert the in-app clipboard at the cursor, splitting on newlines."""
+        if not self.clipboard:
+            self.copy_status = "clipboard is empty"
+            return
+        parts = self.clipboard.replace('\r\n', '\n').replace('\r', '\n').split('\n')
+        line = self.sql_lines[self.current_line]
+        before = line[:self.cursor_position]
+        after = line[self.cursor_position:]
+        if len(parts) == 1:
+            self.sql_lines[self.current_line] = before + parts[0] + after
+            self.cursor_position = len(before) + len(parts[0])
+        else:
+            self.sql_lines[self.current_line] = before + parts[0]
+            for offset, part in enumerate(parts[1:-1], start=1):
+                self.sql_lines.insert(self.current_line + offset, part)
+            self.sql_lines.insert(self.current_line + len(parts) - 1,
+                                  parts[-1] + after)
+            self.current_line += len(parts) - 1
+            self.cursor_position = len(parts[-1])
+        self.copy_status = "pasted"
 
     def _save_buffer(self):
         self.sql_buffers[self.current_buffer] = {
@@ -584,7 +611,7 @@ class SQLiteCursesApp:
                 help_text = "Tab/$: SwitchPanel | @: CommandMode | 5↑6↓: Scroll | 4←7→: H-Scroll"
         elif self.current_panel == "right":
             if self.command_mode:
-                help_text = "CMD: Enter=Run c=Clr e=Exp y=Copy t=Tabs f=Files 56=↕ 47=↔ q=Quit (@=Exit)"
+                help_text = "CMD: Enter=Run c=Clr e=Exp y=Cpy p=Pst t=Tabs f=Files 56=↕ 47=↔ q=Quit (@=Exit)"
             else:
                 help_text = "Tab/$: SwitchPanel | @: CommandMode | Enter: NewLine | ←→↑↓: Move"
         else:  # left
@@ -678,6 +705,9 @@ class SQLiteCursesApp:
                 self.command_mode = False
             elif key == ord('y'):
                 self.copy_sql()
+                self.command_mode = False
+            elif key == ord('p'):
+                self.paste_sql()
                 self.command_mode = False
             elif key == ord('t'):
                 self.tab_mode = True

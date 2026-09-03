@@ -27,7 +27,7 @@ A terminal-based interactive SQLite editor built with Python curses. Designed to
 - **Schema tree** — shows tables, views, and triggers; expand/collapse to see columns with type, PK, and index indicators; horizontal scrolling for long names
 - **Results panel** — vertical and horizontal scrolling, visual scrollbar; cell values with newlines or tabs are shown on a single line so they never corrupt the layout
 - **SQL buffers** — up to 4 independent editor buffers; switch between them while keeping results visible
-- **Copy SQL** — copy editor contents to clipboard via OSC 52 (works in most web/SSH terminals), with fallback to `xclip`/`xsel`, or saves to a `.sql` file
+- **Copy / paste SQL** — `@y` copies editor contents to the clipboard (OSC 52, then `xclip`/`xsel`, then a `.sql` file) and to an in-app clipboard; `@p` pastes the in-app clipboard at the cursor
 - **Export menu** — `@e` opens a submenu to export results to CSV or save the current SQL to a `.sql` file
 - **File browser** — navigate directories to open a different database or create a new one
 - **Resizable panels** — Shift+arrow keys move the vertical and horizontal dividers to reclaim screen space
@@ -83,6 +83,7 @@ Dividers adjust relative to the default proportions, so the layout continues to 
 | `c` | Clear editor |
 | `e` | Export menu (see below) |
 | `y` | Copy SQL to clipboard |
+| `p` | Paste the in-app clipboard at the cursor |
 | `t` | Enter buffer/tab mode |
 | `f` | Open file browser |
 | `5` `6` `4` `7` | Move cursor (up/down/left/right) |
@@ -190,6 +191,12 @@ Both files are saved in the same directory as the open database. The filename is
 3. **`.sql` file** — if neither clipboard method works, the SQL is saved as `query_YYYYMMDD_HHMMSS.sql` next to the database.
 
 The result is confirmed in the editor header and clears on the next keystroke. If clipboard access is unavailable in your environment, use `@e s` instead to save the SQL directly to a file.
+
+Whichever step succeeds, `@y` also stores the text in an **in-app clipboard**.
+
+## Paste
+
+`@p` (editor command mode) inserts the in-app clipboard at the cursor, splitting on newlines so multi-line snippets land correctly. The in-app clipboard is set by `@y`, so the workflow is: `@y` in one buffer, switch buffers with `@t`, `@p` in another. It does not read the system clipboard — that direction depends entirely on your terminal, not the app.
 
 ## SQL Buffers
 
